@@ -459,6 +459,14 @@ def train(args):
 
                 target = noise
 
+                if args.masked_loss and batch["masks"] is not None:
+                    mask = batch["masks"].to(noise_pred.device).reshape(noise_pred.shape[0], 1, noise_pred.shape[2] * 8, noise_pred.shape[3] * 8)
+                    mask = torch.nn.functional.interpolate(mask.float(), size=noise_pred.shape[-2:], mode="nearest")
+
+                    mask = mask / mask.mean()
+                    noise_pred = noise_pred * mask
+                    target = target * mask
+
                 if args.min_snr_gamma:
                     # do not mean over batch dimension for snr weight or scale v-pred loss
                     loss = torch.nn.functional.mse_loss(noise_pred.float(), target.float(), reduction="none")

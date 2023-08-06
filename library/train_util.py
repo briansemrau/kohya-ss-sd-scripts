@@ -124,7 +124,6 @@ class ImageInfo:
         self.latents_crop_ltrb: Tuple[int, int] = None  # crop left top right bottom in original pixel size, not latents size
         self.cond_img_path: str = None
         self.image: Optional[Image.Image] = None  # optional, original PIL Image
-        self.mask: np.ndarray = None
         # SDXL, optional
         self.text_encoder_outputs_npz: Optional[str] = None
         self.text_encoder_outputs1: Optional[torch.Tensor] = None
@@ -1037,7 +1036,12 @@ class BaseDataset(torch.utils.data.Dataset):
             if image_info.latents is not None:  # cache_latents=Trueの場合
                 original_size = image_info.latents_original_size
                 crop_ltrb = image_info.latents_crop_ltrb  # calc values later if flipped
-                mask = image_info.mask
+                
+                #if args.masked_loss:
+                mask = load_mask(image_info.absolute_path) / 255.0
+                mask = trim_and_resize_mask_to_image(mask, image_info.resized_size, image_info.bucket_reso)
+                mask = torch.from_numpy(mask)
+
                 if not flipped:
                     latents = image_info.latents
                 else:
@@ -1049,7 +1053,7 @@ class BaseDataset(torch.utils.data.Dataset):
                 latents, original_size, crop_ltrb, flipped_latents = load_latents_from_disk(image_info.latents_npz)
 
                 #if args.masked_loss:
-                mask = load_mask(image_info.absolute_path)
+                mask = load_mask(image_info.absolute_path) / 255.0
                 mask = trim_and_resize_mask_to_image(mask, image_info.resized_size, image_info.bucket_reso)
                 mask = torch.from_numpy(mask)
 
@@ -2223,14 +2227,6 @@ def cache_batch_latents(
             info.latents = latent
             if flip_aug:
                 info.latents_flipped = flipped_latent
-    
-    #if args.masked_loss:
-    for info in image_infos:
-        mask = load_mask(info.absolute_path)
-        mask = trim_and_resize_mask_to_image(mask, info.resized_size, info.bucket_reso)
-        mask = torch.from_numpy(mask)
-        info.mask = mask
-
     # FIXME this slows down caching a lot, specify this as an option
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
@@ -3020,6 +3016,7 @@ def add_dataset_arguments(
         "--bucket_no_upscale", action="store_true", help="make bucket for each image without upscaling / 画像を拡大せずbucketを作成します"
     )
     parser.add_argument("--masked_loss", action="store_true", help="Enable Masked Loss from Mask File")
+    parser.add_argument("--inverse_mask", action="store_true", help="Invert masks")
 
     parser.add_argument(
         "--token_warmup_min",
